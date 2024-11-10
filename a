@@ -1,0 +1,89 @@
+``python
+from typing import TypedDict, Annotated, List, Dict
+from langgraph.graph import StateGraph, END
+import operator
+
+# Define the state
+class SummaryState(TypedDict):
+    query: str
+    context: str
+    documents: List[str]
+    options: List[Dict[str, List[str]]]
+    summary: str
+    messages: Annotated[List[Dict[str, str]], operator.add]
+
+# Mock functions for each node
+def context_check(state: SummaryState) -> SummaryState:
+    # Simulate context check
+    has_context = len(state['query'].split()) > 3
+    return {"messages": [{"role": "system", "content": f"Context sufficient: {has_context}"}]}
+
+def context_generation(state: SummaryState) -> SummaryState:
+    # Generate context if needed
+    return {
+        "context": f"Generated context for: {state['query']}",
+        "messages": [{"role": "system", "content": "Context generated"}]
+    }
+
+def document_search(state: SummaryState) -> SummaryState:
+    # Simulate document search
+    query = state.get('context', state['query'])
+    return {
+        "documents": [f"Document 1 for {query}", f"Document 2 for {query}"],
+        "messages": [{"role": "system", "content": "Documents retrieved"}]
+    }
+
+def option_extraction(state: SummaryState) -> SummaryState:
+    # Extract options from documents
+    options = [
+        {"option": "Option 1", "pros": ["Pro 1", "Pro 2"], "cons": ["Con 1"]},
+        {"option": "Option 2", "pros": ["Pro 1"], "cons": ["Con 1", "Con 2"]}
+    ]
+    return {"options": options, "messages": [{"role": "system", "content": "Options extracted"}]}
+
+def summary_generation(state: SummaryState) -> SummaryState:
+    # Generate summary
+    summary = f"Summary for query: {state['query']} with {len(state['options'])} options"
+    return {"summary": summary, "messages": [{"role": "system", "content": "Summary generated"}]}
+
+# Create the graph
+workflow = StateGraph(SummaryState)
+
+# Add nodes
+workflow.add_node("context_check", context_check)
+workflow.add_node("context_generation", context_generation)
+workflow.add_node("document_search", document_search)
+workflow.add_node("option_extraction", option_extraction)
+workflow.add_node("summary_generation", summary_generation)
+
+# Add edges
+workflow.set_entry_point("context_check")
+workflow.add_conditional_edges(
+    "context_check",
+    lambda x: "context_generation" if len(x['query'].split()) <= 3 else "document_search",
+    {
+        "context_generation": "context_generation",
+        "document_search": "document_search"
+    }
+)
+workflow.add_edge("context_generation", "document_search")
+workflow.add_edge("document_search", "option_extraction")
+workflow.add_edge("option_extraction", "summary_generation")
+workflow.add_edge("summary_generation", END)
+
+# Compile the graph
+app = workflow.compile()
+
+# Example usage
+result = app.invoke({
+    "query": "What are the best practices for microservices?",
+    "context": "",
+    "documents": [],
+    "options": [],
+    "summary": "",
+    "messages": []
+})
+
+print(result['summary'])
+print(result['messages'])
+```
